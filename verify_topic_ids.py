@@ -11,54 +11,43 @@ OUTPUT_FILE = "topic_id_mismatch.csv"
 
 def get_topic_id_from_zookeeper(zk_client, topic_name):
     topic_path = f"/brokers/topics/{topic_name}"
-    try:
-        topic_data, _ = zk_client.get(topic_path)
-        topic_data_decoded = topic_data.decode("utf-8")
-        topic_info = json.loads(topic_data_decoded)
-        topic_id = topic_info["topic_id"]
-        return topic_id
-    except Exception as e:
-        print(f"Error retrieving topic ID from ZooKeeper for topic: {topic_name}")
-        print(str(e))
-        return None
+    topic_data, _ = zk_client.get(topic_path)
+    topic_data_decoded = topic_data.decode("utf-8")
+    topic_info = json.loads(topic_data_decoded)
+    topic_id = topic_info["topic_id"]
+    return topic_id
 
 def check_topic_id_mismatch(log_dir, zk_string):
     zk_client = KazooClient(hosts=zk_string)
-    try:
-        zk_client.start()
+    zk_client.start()
 
-        zk_topics = {}
+    zk_topics = {}
 
-        with open(OUTPUT_FILE, "w", newline="") as output_file:
-            writer = csv.writer(output_file)
-            writer.writerow(["Topic Partition", "Topic ID in partition.metadata", "Topic ID in ZooKeeper"])
+    with open(OUTPUT_FILE, "w", newline="") as output_file:
+        writer = csv.writer(output_file)
+        writer.writerow(["Topic Partition", "Topic ID in Metadata", "Topic ID in ZooKeeper"])
 
-            for metadata_file in glob.glob(f"{log_dir}/*/partition.metadata"):
-                topic_partition = Path(metadata_file).parts[-2]
-                topic_name = topic_partition.rsplit("-", 1)[0]
-                full_topic_partition = f"{log_dir}/{topic_partition}"
+        for metadata_file in glob.glob(f"{log_dir}/*/partition.metadata"):
+            topic_partition = Path(metadata_file).parts[-2]
+            topic_name = topic_partition.rsplit("-", 1)[0]
+            full_topic_partition = f"{log_dir}/{topic_partition}"
 
-                with open(metadata_file, "r") as metadata:
-                    for line in metadata:
-                        if line.startswith("topic_id"):
-                            topic_id_in_md = line.split()[1]
-                            break
+            with open(metadata_file, "r") as metadata:
+                for line in metadata:
+                    if line.startswith("topic_id"):
+                        topic_id_in_md = line.split()[1]
+                        break
 
-                if topic_name not in zk_topics:
-                    topic_id_in_zk = get_topic_id_from_zookeeper(zk_client, topic_name)
-                    zk_topics[topic_name] = topic_id_in_zk
-                else:
-                    topic_id_in_zk = zk_topics[topic_name]
+            if topic_name not in zk_topics:
+                topic_id_in_zk = get_topic_id_from_zookeeper(zk_client, topic_name)
+                zk_topics[topic_name] = topic_id_in_zk
+            else:
+                topic_id_in_zk = zk_topics[topic_name]
 
-                if topic_id_in_zk is not None and topic_id_in_md != topic_id_in_zk:
-                    writer.writerow([full_topic_partition, topic_id_in_md, topic_id_in_zk])
+            if topic_id_in_md != topic_id_in_zk:
+                writer.writerow([full_topic_partition, topic_id_in_md, topic_id_in_zk])
 
-    except Exception as e:
-        print("Error occurred while checking topic ID mismatch.")
-        print(str(e))
-
-    finally:
-        zk_client.stop()
+    zk_client.stop()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Check topic ID mismatch between partition metadata and ZooKeeper.")
