@@ -1,7 +1,6 @@
 #!/bin/sh
 
 OUTPUT_FILE="topic_id_mismatch.txt"
-zk_topics=()
 
 while getopts "l:z:p:b:" opt; do
   case $opt in
