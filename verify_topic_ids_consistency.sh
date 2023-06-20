@@ -4,13 +4,16 @@ KAFKABIN=<path_to_kafka_installation>/bin
 OUTPUT_FILE="topic_id_mismatch.txt"
 declare -A zk_topics
 
-while getopts ":l:z:" opt; do
+while getopts ":l:z:p:" opt; do
   case $opt in
     l)
       LOG_DIR=$OPTARG
       ;;
     z)
       ZKSTRING=$OPTARG
+      ;;
+    p)
+      PARTITION_PREFIX=$OPTARG
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
@@ -23,12 +26,12 @@ while getopts ":l:z:" opt; do
   esac
 done
 
-if [[ -z $LOG_DIR || -z $ZKSTRING ]]; then
-  echo "Usage: $0 -l <path_to_kafka_log_dir> -z <zk_ip_and_port_for_connection>"
+if [[ -z $LOG_DIR || -z $ZKSTRING || -z $PARTITION_PREFIX ]]; then
+  echo "Usage: $0 -l <path_to_kafka_log_dir> -z <zk_ip_and_port_for_connection> -p <partition_prefix>"
   exit 1
 fi
 
-for metadata in "$LOG_DIR"/logs/*/partition.metadata; do
+for metadata in "$LOG_DIR"/logs/*/"$PARTITION_PREFIX"*; do
   topic_partition=$(awk -F'/' '{print $5}' <<< "$metadata")
   topic_name=$(sed 's/-[0-9]\+$//' <<< "$topic_partition")
   topic_id_in_md=$(grep 'topic_id' "$metadata" | awk '{print $2}')
