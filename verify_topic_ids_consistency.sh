@@ -1,10 +1,9 @@
 #!/bin/bash
 
-KAFKABIN=<path_to_kafka_installation>/bin
 OUTPUT_FILE="topic_id_mismatch.txt"
 declare -A zk_topics
 
-while getopts ":l:z:p:" opt; do
+while getopts ":l:z:p:b:" opt; do
   case $opt in
     l)
       LOG_DIR=$OPTARG
@@ -14,6 +13,9 @@ while getopts ":l:z:p:" opt; do
       ;;
     p)
       PARTITION_PREFIX=$OPTARG
+      ;;
+    b)
+      KAFKABIN=$OPTARG
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
@@ -26,8 +28,8 @@ while getopts ":l:z:p:" opt; do
   esac
 done
 
-if [[ -z $LOG_DIR || -z $ZKSTRING || -z $PARTITION_PREFIX ]]; then
-  echo "Usage: $0 -l <path_to_kafka_log_dir> -z <zk_ip_and_port_for_connection> -p <partition_prefix>"
+if [[ -z $LOG_DIR || -z $ZKSTRING || -z $PARTITION_PREFIX || -z $KAFKABIN ]]; then
+  echo "Usage: $0 -l <path_to_kafka_log_dir> -z <zk_ip_and_port_for_connection> -p <partition_prefix> -b <path_to_kafka_bin>"
   exit 1
 fi
 
