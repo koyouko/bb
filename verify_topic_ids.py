@@ -4,16 +4,16 @@ import argparse
 import csv
 import glob
 import json
-from kazoo.client import KazooClient # Doc https://kazoo.readthedocs.io/en/latest/basic_usage.html | Install: pip install kazoo
+from kazoo.client import KazooClient
 from pathlib import Path
 
 OUTPUT_FILE = "topic_id_mismatch.csv"
 
 
 def get_topic_id_from_zookeeper(zk_client, topic_name):
-    
-    # Retrieves the topic ID from ZooKeeper for a given topic name.
-    
+    """
+    Retrieves the topic ID from ZooKeeper for a given topic name.
+    """
     topic_path = f"/brokers/topics/{topic_name}"
     try:
         topic_data, _ = zk_client.get(topic_path)
@@ -28,9 +28,9 @@ def get_topic_id_from_zookeeper(zk_client, topic_name):
 
 
 def check_topic_id_mismatch(log_dir, zk_string):
-    
-    # Checks for topic ID mismatch between partition metadata and ZooKeeper.
-    
+    """
+    Checks for topic ID mismatch between partition metadata and ZooKeeper.
+    """
     zk_client = KazooClient(hosts=zk_string)
     try:
         zk_client.start()
