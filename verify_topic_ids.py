@@ -4,7 +4,7 @@ import argparse
 import csv
 import glob
 import json
-from kazoo.client import KazooClient
+from kazoo.client import KazooClient # Doc https://kazoo.readthedocs.io/en/latest/basic_usage.html | Install: pip install kazoo
 from pathlib import Path
 
 OUTPUT_FILE = "topic_id_mismatch.csv"
