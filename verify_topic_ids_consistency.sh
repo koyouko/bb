@@ -31,7 +31,9 @@ if [ -z "$LOG_DIR" ] || [ -z "$ZKSTRING" ] || [ -z "$PARTITION_PREFIX" ] || [ -z
   echo "Usage: $0 -l <path_to_kafka_log_dir> -z <zk_ip_and_port_for_connection> -p <partition_prefix> -b <path_to_kafka_bin>"
   exit 1
 fi
-
+numMeta=$(ls -1 "$LOG_DIR"/"$PARTITION_PREFIX"*/partition.metadata | wc -l)
+count=0
+found=0
 for metadata in "$LOG_DIR"/logs/*/"$PARTITION_PREFIX"*; do
   topic_partition=$(echo "$metadata" | awk -F'/' '{print $5}')
   topic_name=$(echo "$topic_partition" | sed 's/-[0-9]\+$//')
@@ -46,5 +48,8 @@ for metadata in "$LOG_DIR"/logs/*/"$PARTITION_PREFIX"*; do
 
   if [ "$topic_id_in_md" != "$topic_id_in_zk" ]; then
     echo "Found topic id mismatch for $topic_partition -- in partition metadata: $topic_id_in_md and in zookeeper: $topic_id_in_zk" >> "$OUTPUT_FILE"
+    (found+=1))
   fi
+  ((count+=1))
+  echo "Completed $count/$numMeta Found:$found"
 done
