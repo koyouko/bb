@@ -26,7 +26,7 @@ echo "$ALL_TOPIC_CONFIGS" | while read -r line
 do
     # Check if the line contains min.insync.replicas configuration
     if echo "$line" | grep -q "min.insync.replicas"; then
-        TOPIC_NAME=$(echo "$line" | awk -F'\t' '{print $2}')
+        TOPIC_NAME=$(echo "$line" | awk '{print $5}')
         MIN_INSYNC_REPLICAS=$(echo "$line" | grep -oE 'min\.insync\.replicas=[0-9]+' | cut -d "=" -f 2)
 
         # Check if min.insync.replicas is not 2
