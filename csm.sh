@@ -1,19 +1,3 @@
-
-Summary: Add retry logic and hardening to JAAS config generation script
-
-Type: Task
-
-Description:
-The JAAS generation script (Zookeeper/Kafka SASL) intermittently fails to create JAAS config files on service restart. The CSM vault fetch is attempted only once with no error handling — if the vault is slow or returns an error, the script exits and the restart proceeds without JAAS files. File writes are also non-atomic, and the script exits 0 regardless of outcome.
-
-Acceptance Criteria:
-
-CSM vault fetch retries with exponential backoff (configurable attempts/delay); response validated as well-formed JSON before use
-JAAS files written atomically (temp file + mv) so partial/empty files can't occur on crash
-Distinct exit codes for each failure mode (vault unreachable, invalid JSON, extraction failure, write failure)
-Post-write verification that all three JAAS files exist and are non-empty before exit 0
-File permissions set to 640
-
 #!/bin/bash
 #
 # generate-jaas.sh
@@ -41,7 +25,6 @@ File permissions set to 640
 #   6  failed to write one or more JAAS files
 #   7  post-write verification failed (file missing or empty)
 
-set -u -o pipefail
 
 # ---------------------------------------------------------------------------
 # Config (override via environment if needed)
@@ -78,23 +61,33 @@ fi
 fetch_credentials() {
     local attempt=1
     local delay="$RETRY_BASE_DELAY"
-    local output rc
+    local output err_output json rc
+    local err_file
+    err_file=$(mktemp)
 
     while (( attempt <= MAX_RETRIES )); do
         log "Fetching secret from CSM vault (attempt $attempt/$MAX_RETRIES)..."
-        output=$("$BSP_BIN_DIR/csm-kv.sh" "$BSP_ENV/zk_sasl_md5" 2>&1)
+        # stdout -> $output (the JSON payload), stderr -> $err_file (progress
+        # messages like "Getting machine token for ..." and error details).
+        output=$("$BSP_BIN_DIR/csm-kv.sh" "$BSP_ENV/zk_sasl_md5" 2>"$err_file")
         rc=$?
+        err_output=$(cat "$err_file")
 
-        if (( rc == 0 )) && [[ -n "$output" ]] && echo "$output" | jq -e . &> /dev/null; then
-            DATA="$output"
+        # Defensive: if any informational lines ever leak onto stdout, keep
+        # only the JSON portion (from the first line starting with '{').
+        json=$(printf '%s\n' "$output" | sed -n '/^[[:space:]]*{/,$p')
+
+        if (( rc == 0 )) && [[ -n "$json" ]] && echo "$json" | jq -e . &> /dev/null; then
+            DATA="$json"
             log "Secret fetched and validated on attempt $attempt."
+            rm -f "$err_file"
             return 0
         fi
 
         if (( rc != 0 )); then
-            log "csm-kv.sh failed (rc=$rc): ${output:0:200}"
+            log "csm-kv.sh failed (rc=$rc): ${err_output:0:200}"
         else
-            log "csm-kv.sh returned invalid or empty JSON: ${output:0:200}"
+            log "csm-kv.sh returned invalid or empty JSON on stdout: ${output:0:200}"
         fi
 
         if (( attempt < MAX_RETRIES )); then
@@ -105,6 +98,8 @@ fetch_credentials() {
         fi
         (( attempt++ ))
     done
+
+    rm -f "$err_file"
 
     # Distinguish the two failure modes for the exit code.
     if (( rc != 0 )); then
@@ -119,8 +114,9 @@ fetch_credentials
 # ---------------------------------------------------------------------------
 # Extract username and password
 # ---------------------------------------------------------------------------
+# Vault returns a single key/value pair: { "<username>": "<password>" }
 USERNAME=$(echo "$DATA" | jq -r 'keys[0] // empty')
-PASSWORD=$(echo "$DATA" | jq -r '.[] // empty' | head -n 1)
+PASSWORD=$(echo "$DATA" | jq -r --arg u "$USERNAME" '.[$u] // empty')
 
 if [[ -z "$USERNAME" || -z "$PASSWORD" ]]; then
     die 5 "Could not extract username or password from the JSON data."
@@ -252,3 +248,17 @@ compare_and_write_file "$KAFKA_JAAS_CLIENT_FILE"  "$KAFKA_JAAS_CLIENT_CONTENT"  
 if (( write_failures > 0 )); then
     die 6 "$write_failures JAAS file(s) failed to write."
 fi
+
+# ---------------------------------------------------------------------------
+# Post-write verification — the whole point of this script is that these
+# three files exist and are non-empty after a restart. Prove it before
+# exiting 0.
+# ---------------------------------------------------------------------------
+for f in "$ZOOKEEPER_JAAS_FILE" "$KAFKA_JAAS_FILE" "$KAFKA_JAAS_CLIENT_FILE"; do
+    if [[ ! -s "$f" ]]; then
+        die 7 "Verification failed: $f is missing or empty."
+    fi
+done
+
+log "All JAAS files verified present and non-empty. Done."
+exit 0
